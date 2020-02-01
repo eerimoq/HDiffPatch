@@ -310,6 +310,9 @@ struct TNewStreamCache:public TBlockStreamCache{
     void toBestDataLength(){
         if (dataLength()*2>=cacheSize) return;
         bool result=_resetPos_continue(backupCacheSize,pos(),kMatchBlockSize);
+#ifdef NDEBUG
+        (void)result;
+#endif
         assert(result);
     }
     

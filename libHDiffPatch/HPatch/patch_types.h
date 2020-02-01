@@ -142,6 +142,9 @@ typedef int hpatch_BOOL;
         if (dec==0) return hpatch_FALSE;
         result=decompressPlugin->decompress_part(dec,out_data,out_data_end);
         colose_rt=decompressPlugin->close(decompressPlugin,dec);
+#ifdef NDEBUG
+        (void)colose_rt;
+#endif
         assert(colose_rt);
         return result;
     }
