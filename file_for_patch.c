@@ -442,6 +442,27 @@ hpatch_BOOL hpatch_TFileStreamOutput_open(hpatch_TFileStreamOutput* self,const c
     return hpatch_TRUE;
 }
 
+hpatch_BOOL hpatch_TFileStreamOutput_tmpfile(hpatch_TFileStreamOutput* self,
+                                             hpatch_StreamPos_t max_file_length)
+{
+    assert(self->m_file==0);
+    if (self->m_file) return hpatch_FALSE;
+    self->m_file = tmpfile();
+    if (self->m_file == NULL) return hpatch_FALSE;
+    
+    self->base.streamImport=self;
+    self->base.streamSize=max_file_length;
+    self->base.read_writed=_hpatch_TFileStreamOutput_read_file;
+    self->base.write=_TFileStreamOutput_write_file;
+    self->m_fpos=0;
+    self->m_offset=0;
+    self->fileError=hpatch_FALSE;
+    self->is_in_readModel=hpatch_FALSE;
+    self->is_random_out=hpatch_FALSE;
+    self->out_length=0;
+    return hpatch_TRUE;
+}
+
 hpatch_BOOL hpatch_TFileStreamOutput_flush(hpatch_TFileStreamOutput* self){
     return _import_fileFlush(self->m_file);
 }

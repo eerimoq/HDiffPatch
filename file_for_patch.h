@@ -237,6 +237,8 @@ static void hpatch_TFileStreamOutput_init(hpatch_TFileStreamOutput* self){
 }
 hpatch_BOOL hpatch_TFileStreamOutput_open(hpatch_TFileStreamOutput* self,const char* fileName_utf8,
                                    hpatch_StreamPos_t max_file_length);
+hpatch_BOOL hpatch_TFileStreamOutput_tmpfile(hpatch_TFileStreamOutput* self,
+                                             hpatch_StreamPos_t max_file_length);
 hpatch_inline static
 void hpatch_TFileStreamOutput_setRandomOut(hpatch_TFileStreamOutput* self,hpatch_BOOL is_random_out){
     self->is_random_out=is_random_out;
