@@ -53,11 +53,15 @@ bool check_diff(const unsigned char* newData,const unsigned char* newData_end,
 //create a compressed diffData between oldData and newData
 //  out_diff compressed by compressPlugin
 //  kMinSingleMatchScore: default 6, bin: 0--4  text: 4--9
-void create_compressed_diff(const unsigned char* newData,const unsigned char* newData_end,
-                            const unsigned char* oldData,const unsigned char* oldData_end,
+void create_compressed_diff(const unsigned char *newData,
+                            const unsigned char *newData_end,
+                            const unsigned char *oldData,
+                            const unsigned char *oldData_end,
                             std::vector<unsigned char>& out_diff,
-                            const hdiff_TCompress* compressPlugin=0,
-                            int kMinSingleMatchScore=kMinSingleMatchScore_default);
+                            const hdiff_TCompress *compressPlugin=0,
+                            int kMinSingleMatchScore=kMinSingleMatchScore_default,
+                            int patch_type=0);
+
 //return patch_decompress(oldData+diff)==newData?
 bool check_compressed_diff(const unsigned char* newData,const unsigned char* newData_end,
                            const unsigned char* oldData,const unsigned char* oldData_end,
@@ -86,7 +90,7 @@ void create_compressed_diff_stream(const hpatch_TStreamInput*  newData,
                                    const hpatch_TStreamOutput* out_diff,
                                    const hdiff_TCompress* compressPlugin=0,
                                    size_t kMatchBlockSize=kMatchBlockSize_default,
-                                   bool serialize_detools=false);
+                                   int patch_type=0);
 
 
 //resave compressed_diff

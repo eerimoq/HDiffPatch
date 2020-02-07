@@ -219,7 +219,8 @@ static void search_cover(TDiffData& diff,const TSuffixString& sstring){
 }
 
 //选择合适的覆盖线,去掉不合适的.
-static void select_cover(TDiffData& diff,int kMinSingleMatchScore){
+static void select_cover(TDiffData& diff,int kMinSingleMatchScore)
+{
     std::vector<TOldCover>&  covers=diff.covers;
     TCompressDetect  nocover_detect;
     TCompressDetect  cover_detect;
@@ -497,9 +498,12 @@ static void serialize_diff(const TDiffData& diff, std::vector<TByte>& out_diff)
      pushBack(out_data, &_cstrEndTag, (&_cstrEndTag) + 1);
  }
 
+/**
+ *
+ */
 static void serialize_compressed_diff(const TDiffData& diff,
                                       std::vector<TByte>& out_diff,
-                                      const hdiff_TCompress* compressPlugin)
+                                      const hdiff_TCompress *compressPlugin)
 {
     const TUInt coverCount = (TUInt)diff.covers.size();
     std::vector<TByte> cover_buf;
@@ -595,26 +599,28 @@ static void get_diff(const TByte* newData,const TByte* newData_end,
     _sstring_default.clear();
 
     extend_cover(diff);//先尝试扩展.
-    select_cover(diff,kMinSingleMatchScore);
+    select_cover(diff, kMinSingleMatchScore);
     extend_cover(diff);//select_cover会删除一些覆盖线,所以重新扩展.
     sub_cover(diff);
 }
 
 }//end namespace
 
-
 void create_diff(const TByte* newData,const TByte* newData_end,
                  const TByte* oldData,const TByte* oldData_end,
                  std::vector<TByte>& out_diff,
-                 int kMinSingleMatchScore){
+                 int kMinSingleMatchScore)
+{
     TDiffData diff;
+
     get_diff(newData,newData_end,oldData,oldData_end,diff,kMinSingleMatchScore);
     serialize_diff(diff,out_diff);
 }
 
 bool check_diff(const TByte* newData,const TByte* newData_end,
                 const TByte* oldData,const TByte* oldData_end,
-                const TByte* diff,const TByte* diff_end){
+                const TByte* diff,const TByte* diff_end)
+{
     TAutoMem updateNewData(newData_end-newData);
     TByte* updateNew0=updateNewData.data();
     if (!patch(updateNew0,updateNew0+updateNewData.size(),
@@ -628,7 +634,8 @@ void create_compressed_diff(const TByte* newData,
                             const TByte* oldData_end,
                             std::vector<TByte>& out_diff,
                             const hdiff_TCompress* compressPlugin,
-                            int kMinSingleMatchScore)
+                            int kMinSingleMatchScore,
+                            int patch_type)
 {
     TDiffData diff;
 
@@ -698,49 +705,160 @@ bool check_compressed_diff_stream(const hpatch_TStreamInput*  newData,
 }
 #undef _test
 
-//for test
-void __hdiff_private__create_compressed_diff(const TByte* newData,const TByte* newData_end,
-                                             const TByte* oldData,const TByte* oldData_end,
-                                             std::vector<TByte>& out_diff,
-                                             const hdiff_TCompress* compressPlugin,int kMinSingleMatchScore,
-                                             const TSuffixString* sstring){
-    TDiffData diff;
-    get_diff(newData,newData_end,oldData,oldData_end,diff,kMinSingleMatchScore,sstring);
-    serialize_compressed_diff(diff,out_diff,compressPlugin);
-}
-
-
-//======================
 #include "private_diff/limit_mem_diff/digest_matcher.h"
 #include "private_diff/limit_mem_diff/stream_serialize.h"
 
-static void getCovers_stream(const hpatch_TStreamInput*  newData,
-                             const hpatch_TStreamInput*  oldData,
-                             size_t kMatchBlockSize,bool kIsSkipSameRange,
-                             TCovers& out_covers){
+static void getCovers_stream(const hpatch_TStreamInput *newData,
+                             const hpatch_TStreamInput *oldData,
+                             size_t kMatchBlockSize,
+                             bool kIsSkipSameRange,
+                             TCovers& out_covers)
+{
     {
         TDigestMatcher matcher(oldData,kMatchBlockSize,kIsSkipSameRange);
         matcher.search_cover(newData,&out_covers);
     }
+
     {//check cover
         TCover cover;
         hpatch_StreamPos_t lastNewEnd=0;
+
         for (size_t i=0;i<out_covers.coverCount();++i){
             out_covers.covers(i,&cover);
             assert_cover_safe(cover,lastNewEnd,newData->streamSize,oldData->streamSize);
             lastNewEnd=cover.newPos+cover.length;
         }
     }
-    //todo: + extend_cover_stream ?
 }
 
-static void stream_serialize(const hpatch_TStreamInput *newData,
-                             hpatch_StreamPos_t oldDataSize,
-                             const hpatch_TStreamOutput *out_diff,
-                             const hdiff_TCompress *compressPlugin,
-                             const TCovers& covers)
+static int pack_size(uint8_t *buf_p, int32_t value, size_t size)
 {
+    int res;
 
+    if (size < 10) {
+        return (-1);
+    }
+
+    res = 0;
+
+    if (value == 0) {
+        buf_p[0] = 0;
+        res++;
+    } else {
+        if (value > 0) {
+            buf_p[res] = 0;
+        } else {
+            buf_p[res] = 0x40;
+            value *= -1;
+        }
+
+        buf_p[res] |= (0x80 | (value & 0x3f));
+        value >>= 6;
+        res++;
+
+        while (value > 0) {
+            buf_p[res] = (0x80 | (value & 0x7f));
+            value >>= 7;
+            res++;
+        }
+    }
+
+    buf_p[res - 1] &= 0x7f;
+
+    return (res);
+}
+
+static void pack_size_stream(TDiffStream& outDiff, TInt value)
+{
+    int res;
+    uint8_t buf[10];
+
+    res = pack_size(&buf[0], value, sizeof(buf));
+    outDiff.pushBack(&buf[0], res);
+}
+
+/**
+ * Serialize the diff as a normal patch. Only the chunks are
+ * serialized here, the caller must create the header.
+ */
+static void stream_serialize_normal(const hpatch_TStreamInput *new_data_p,
+                                    const hpatch_TStreamOutput *out_diff_p,
+                                    const TCovers& covers)
+{
+    TCover cover;
+    TCover prev_cover;
+    size_t new_pos;
+    size_t size;
+    TDiffStream outDiff(out_diff_p);
+    unsigned char value[1];
+
+    if (covers.coverCount() == 0) {
+        return;
+    }
+
+    new_pos = 0;
+    prev_cover.oldPos = 0;
+    prev_cover.newPos = 0;
+    prev_cover.length = 0;
+
+    for (size_t i = 0; i < covers.coverCount(); ++i) {
+        covers.covers(i, &cover);
+
+        /* Diff data. */
+        pack_size_stream(outDiff, prev_cover.length);
+
+        for (size_t j = 0; j < prev_cover.length; j++) {
+            outDiff.pushBack((const unsigned char *)"\x00", 1);
+        }
+
+        new_pos += prev_cover.length;
+
+        /* Extra data. */
+        size = (cover.newPos - new_pos);
+        pack_size_stream(outDiff, size);
+
+        for (size_t j = 0; j < size; j++) {
+            new_data_p->read(new_data_p, new_pos + j, &value[0], &value[1]);
+            outDiff.pushBack(&value[0], 1);
+        }
+
+        new_pos += size;
+
+        /* Adjustment. */
+        pack_size_stream(outDiff,
+                         (TInt)cover.oldPos - (TInt)prev_cover.oldPos
+                         - (TInt)prev_cover.length);
+
+        prev_cover = cover;
+    }
+
+    /* Diff data. */
+    pack_size_stream(outDiff, prev_cover.length);
+
+    for (size_t j = 0; j < prev_cover.length; j++) {
+        outDiff.pushBack((const unsigned char *)"\x00", 1);
+    }
+
+    new_pos += prev_cover.length;
+
+    /* Extra data. */
+    pack_size_stream(outDiff, new_data_p->streamSize - new_pos);
+
+    for (size_t j = 0; j < new_data_p->streamSize - new_pos; j++) {
+        new_data_p->read(new_data_p, new_pos + j, &value[0], &value[1]);
+        outDiff.pushBack(&value[0], 1);
+    }
+
+    /* Adjustment. */
+    pack_size_stream(outDiff, 0);
+}
+
+static void stream_serialize_hdiffpatch(const hpatch_TStreamInput *newData,
+                                        hpatch_StreamPos_t oldDataSize,
+                                        const hpatch_TStreamOutput *out_diff,
+                                        const hdiff_TCompress *compressPlugin,
+                                        const TCovers& covers)
+{
     std::vector<TByte> rle_ctrlBuf;
     std::vector<TByte> rle_codeBuf;
     hpatch_StreamPos_t cover_buf_size;
@@ -767,15 +885,6 @@ static void stream_serialize(const hpatch_TStreamInput *newData,
     outDiff.packUInt(newData->streamSize);
     outDiff.packUInt(oldDataSize);
     outDiff.packUInt(covers.coverCount());
-    // printf("coverCount: %lu\n", covers.coverCount());
-    // TCover cover;
-    // for (size_t i = 0; i < covers.coverCount(); ++i) {
-    //     covers.covers(i, &cover);
-    //     printf("oldPos: %llu, newPos: %llu, length: %llu\n",
-    //            cover.oldPos,
-    //            cover.newPos,
-    //            cover.length);
-    // }
     cover_buf_size = TCoversStream::getDataSize(covers);
     outDiff.packUInt(cover_buf_size);
     TPlaceholder compress_cover_buf_sizePos = outDiff.packUInt_pos(compressPlugin
@@ -787,10 +896,10 @@ static void stream_serialize(const hpatch_TStreamInput *newData,
     outDiff.packUInt(0);
     newDataDiff_size = TNewDataDiffStream::getDataSize(covers, newData->streamSize);
     outDiff.packUInt(newDataDiff_size);
-
-    TPlaceholder compress_newDataDiff_sizePos = outDiff.packUInt_pos(compressPlugin
-                                                                     ? newDataDiff_size
-                                                                     : 0);
+    TPlaceholder compress_newDataDiff_sizePos = outDiff.packUInt_pos(
+        compressPlugin
+        ? newDataDiff_size
+        : 0);
 
     {//save covers
         TCoversStream cover_buf(covers, cover_buf_size);
@@ -804,216 +913,36 @@ static void stream_serialize(const hpatch_TStreamInput *newData,
 
     {//save newDataDiff
         TNewDataDiffStream newDataDiff(covers, newData, newDataDiff_size);
-        outDiff.pushStream(&newDataDiff, compressPlugin, compress_newDataDiff_sizePos);
+        outDiff.pushStream(&newDataDiff,
+                           compressPlugin,
+                           compress_newDataDiff_sizePos);
     }
 }
 
-/* Colorful output selection. */
-#ifndef DBG_NCOLOR
-#    define DBG_LOC "\x1b[02m"
-#    define DBG_EXPR "\x1b[0m\x1b[36m\x1b[1m"
-#    define DBG_VALUE "\x1b[01m"
-#    define DBG_RESET "\x1b[0m"
-#    define DBG_FORMAT(format)                          \
-    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET      \
-    " = " DBG_VALUE format "\n" DBG_RESET
-#    define DBG_FORMAT_HEX(format, hexformat)                   \
-    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET              \
-    " = " DBG_VALUE format " (0x" hexformat ")\n" DBG_RESET
-#    define DBG_FORMAT_ARRAY_BEGIN                                      \
-    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET " = " DBG_VALUE "["
-#    define DBG_FORMAT_ARRAY_END   "] (length: %u)\n" DBG_RESET
-#    define DBG_FORMAT_HEXDUMP_BEGIN                    \
-    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s " DBG_RESET "(size: %u):\n" DBG_VALUE
-#    define DBG_FORMAT_HEXDUMP_END DBG_RESET
-#    define DBG_FORMAT_BACKTRACE                                        \
-    DBG_LOC "%s:%d: (%s) " DBG_RESET "Traceback (most recent call last):\n"
-#else
-#    define DBG_FORMAT(format)     "%s:%d: (%s) %s = " format "\n"
-#    define DBG_FORMAT_HEX(format, hexformat)           \
-    "%s:%d: (%s) %s = " format " (0x" hexformat ")\n"
-#    define DBG_FORMAT_ARRAY_BEGIN "%s:%d: (%s) %s = ["
-#    define DBG_FORMAT_ARRAY_END   "] (length: %u)\n"
-#    define DBG_FORMAT_HEXDUMP_BEGIN "%s:%d: (%s) %s (size: %u):\n"
-#    define DBG_FORMAT_BACKTRACE                        \
-    "%s:%d: (%s) Traceback (most recent call last):\n"
-#endif
-
-#define DBG_OSTREAM stderr
-
-static inline void dbg_print_ascii(const uint8_t *buf_p, size_t size)
+static void stream_serialize(const hpatch_TStreamInput *new_data_p,
+                             const hpatch_TStreamInput *old_data_p,
+                             const hpatch_TStreamOutput *out_diff_p,
+                             const hdiff_TCompress *compress_plugin_p,
+                             int patch_type,
+                             const TCovers& covers)
 {
-    size_t i;
+    switch (patch_type) {
 
-    if (size < 8) {
-        fprintf(DBG_OSTREAM, " ");
+    case 0:
+        stream_serialize_normal(new_data_p, out_diff_p, covers);
+        break;
+
+    case 2:
+        stream_serialize_hdiffpatch(new_data_p,
+                                    old_data_p->streamSize,
+                                    out_diff_p,
+                                    compress_plugin_p,
+                                    covers);
+        break;
+
+    default:
+        break;
     }
-
-    for (i = 0; i < 16 - size; i++) {
-        fprintf(DBG_OSTREAM, "   ");
-    }
-
-    fprintf(DBG_OSTREAM, "'");
-
-    for (i = 0; i < size; i++) {
-        fprintf(DBG_OSTREAM, "%c", isprint((int)buf_p[i]) ? buf_p[i] : '.');
-    }
-
-    fprintf(DBG_OSTREAM, "'");
-}
-
-/**
- * Hexdump of given size at given address. Returns the result of given
- * expression.
- */
-#define dbgh(expr, size)                                            \
-    dbg_hexdump(__FILE__, __LINE__, __func__, #expr, expr, size)
-
-static inline void dbg_hexdump(const char *file_p,
-                               int line,
-                               const char *func_p,
-                               const char *expr_p,
-                               const void *buf_p,
-                               size_t size)
-{
-    int pos;
-    const uint8_t *u8_buf_p;
-
-    u8_buf_p = (const uint8_t *)buf_p;
-    pos = 0;
-
-    fprintf(DBG_OSTREAM,
-            DBG_FORMAT_HEXDUMP_BEGIN,
-            file_p,
-            line,
-            func_p,
-            expr_p,
-            (int)size);
-
-    while (size > 0) {
-        if ((pos % 16) == 0) {
-            fprintf(DBG_OSTREAM, "    %08x: ", pos);
-        }
-
-        fprintf(DBG_OSTREAM, "%02x ", u8_buf_p[pos] & 0xff);
-
-        if ((pos % 16) == 7) {
-            fprintf(DBG_OSTREAM, " ");
-        }
-
-        if ((pos % 16) == 15) {
-            dbg_print_ascii(&u8_buf_p[pos - 15], 16);
-            fprintf(DBG_OSTREAM, "\n");
-        }
-
-        pos++;
-        size--;
-    }
-
-    if ((pos % 16) != 0) {
-        dbg_print_ascii(&u8_buf_p[pos - (pos % 16)], pos % 16);
-        fprintf(DBG_OSTREAM, "\n");
-    }
-
-#ifdef DBG_FORMAT_HEXDUMP_END
-    fprintf(DBG_OSTREAM, DBG_FORMAT_HEXDUMP_END);
-#endif
-}
-
-/**
- * Serialize the patch in the detools format. Only the chunks are
- * serialized here, the caller must create the header.
- *
- * Repeat this:
- *
- * 1. Diff data size + data.
- * 2. Extra data size + data.
- * 3. Adjustment.
- */
-static void stream_serialize_detools(const hpatch_TStreamInput *newData,
-                                     const hpatch_TStreamInput *oldData,
-                                     const hpatch_TStreamOutput *out_diff,
-                                     const hdiff_TCompress *compressPlugin,
-                                     const TCovers& covers)
-{
-    uint8_t *buf_p = (uint8_t *)malloc(oldData->streamSize);
-    TCover cover;
-    TCover prev_cover;
-    size_t new_pos;
-    size_t size;
-
-    printf("%d\n", oldData->read(oldData, 0, buf_p, &buf_p[oldData->streamSize]));
-    dbgh(buf_p, oldData->streamSize);
-
-    buf_p = (uint8_t *)malloc(newData->streamSize);
-
-    printf("%d\n", newData->read(newData, 0, buf_p, &buf_p[newData->streamSize]));
-    dbgh(buf_p, newData->streamSize);
-
-    printf("coverCount: %lu\n", covers.coverCount());
-
-    // python3 -m detools create_patch_hdiffpatch --match-block-size 8 .gitmodules MANIFEST.in a
-    // coverCount: 4
-    // oldPos: 40, newPos: 137, length: 19
-    // oldPos:  0, newPos: 172, length: 34
-    // oldPos: 61, newPos: 206, length: 44
-    // oldPos: 32, newPos: 342, length: 28
-    //
-    //  0 diff, 137 extra,  40 adjustment - 137 written
-    // 19 diff,  16 extra, -40 adjustment - 172 written
-    // 34 diff,   0 extra,  61 adjustment - 206 written
-    // 44 diff,  92 extra, -29 adjustment - 342 written
-    // 28 diff,   0 extra,   0 adjustment - 370 written
-    //
-
-    new_pos = 0;
-    prev_cover.oldPos = 0;
-    prev_cover.newPos = 0;
-    prev_cover.length = 0;
-
-    for (size_t i = 0; i < covers.coverCount(); ++i) {
-        covers.covers(i, &cover);
-        // printf("oldPos: %llu, newPos: %llu, length: %llu\n",
-        //        cover.oldPos,
-        //        cover.newPos,
-        //        cover.length);
-        // printf("\nnew_pos: %lu\n", new_pos);
-
-        /* Diff data. */
-        printf("\ndiff: %llu\n", prev_cover.length);
-        // pack_size(out, prev_cover.length);
-        // write_zeros(out, prev_cover.length);
-        new_pos += prev_cover.length;
-
-        /* Extra data. */
-        size = (cover.newPos - new_pos);
-        printf("extra: %lu\n", size);
-        // pack_size(out, size);
-        // copy_data(out, &newData[new_pos], size);
-        new_pos += size;
-
-        /* Adjustment. */
-        printf("adjustment: %lld\n",
-               (long long)cover.oldPos - (long long)prev_cover.oldPos);
-        // pack_size(out, cover.oldPos - prev_cover.oldPos);
-        prev_cover = cover;
-    }
-
-    // printf("\nnew_pos: %lu\n", new_pos);
-
-    /* Diff data. */
-    printf("\ndiff: %llu\n", prev_cover.length);
-    // pack_size(out, prev_cover.length);
-    // write_zeros(out, prev_cover.length);
-    new_pos += prev_cover.length;
-
-    /* Extra data. */
-    printf("extra: %llu\n", newData->streamSize - new_pos);
-    // pack_size(out, size);
-    // copy_data(out, &newData[new_pos], size);
-
-    /* Adjustment. */
-    printf("adjustment: %d\n", 0);
 }
 
 void create_compressed_diff_stream(const hpatch_TStreamInput *newData,
@@ -1021,28 +950,14 @@ void create_compressed_diff_stream(const hpatch_TStreamInput *newData,
                                    const hpatch_TStreamOutput *out_diff,
                                    const hdiff_TCompress *compressPlugin,
                                    size_t kMatchBlockSize,
-                                   bool serialize_detools)
+                                   int patch_type)
 {
     const bool isSkipSameRange = (compressPlugin != NULL);
     TCovers covers(oldData->streamSize, newData->streamSize);
 
     getCovers_stream(newData, oldData, kMatchBlockSize, isSkipSameRange, covers);
-
-    if (!serialize_detools) {
-        stream_serialize_detools(newData,
-                                 oldData,
-                                 out_diff,
-                                 compressPlugin,
-                                 covers);
-    } else {
-        stream_serialize(newData,
-                         oldData->streamSize,
-                         out_diff,
-                         compressPlugin,
-                         covers);
-    }
+    stream_serialize(newData, oldData, out_diff, compressPlugin, patch_type, covers);
 }
-
 
 void resave_compressed_diff(const hpatch_TStreamInput*  in_diff,
                             hpatch_TDecompress*         decompressPlugin,
