@@ -2,7 +2,7 @@
 /*
  The MIT License (MIT)
  Copyright (c) 2012-2017 HouSisong
- 
+
  Permission is hereby granted, free of charge, to any person
  obtaining a copy of this software and associated documentation
  files (the "Software"), to deal in the Software without
@@ -11,10 +11,10 @@
  copies of the Software, and to permit persons to whom the
  Software is furnished to do so, subject to the following
  conditions:
- 
+
  The above copyright notice and this permission notice shall be
  included in all copies of the Software.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -51,7 +51,7 @@ hpatch_BOOL TCompressedStream::_write_code(const hpatch_TStreamOutput* stream,hp
     checki(self->_writeToPos_back==writeToPos,"TCompressedStream::write() writeToPos error!");
     size_t dataLen=(size_t)(data_end-data);
     self->_writeToPos_back=writeToPos+dataLen;
-    
+
     if ((self->_is_overLimit)||(self->out_pos+dataLen>self->out_posLimitEnd)){
         self->_is_overLimit=true;
     }else{
@@ -97,7 +97,7 @@ hpatch_BOOL TCoversStream::_read(const hpatch_TStreamInput* stream,hpatch_Stream
         checki(self->_readFromPos_back==readFromPos,"TCoversStream::read() readFromPos error!");
     }
     self->_readFromPos_back=readFromPos+(size_t)(out_data_end-out_data);
-    
+
     size_t n=self->covers.coverCount();
     while (out_data<out_data_end) {
         size_t curLen=self->curCodePos_end-self->curCodePos;
@@ -167,33 +167,54 @@ lastNewEnd(0),readedCoverCount(0),_readFromPos_back(0){
     this->read=_read;
 }
 
-hpatch_BOOL TNewDataDiffStream::_read(const hpatch_TStreamInput* stream,hpatch_StreamPos_t readFromPos,
-                                      unsigned char* out_data,unsigned char* out_data_end){
+hpatch_BOOL TNewDataDiffStream::_read(const hpatch_TStreamInput* stream,
+                                      hpatch_StreamPos_t readFromPos,
+                                      unsigned char* out_data,
+                                      unsigned char* out_data_end)
+{
     TNewDataDiffStream* self=(TNewDataDiffStream*)stream->streamImport;
+
     if (readFromPos==0){
         self->curNewPos=0;
         self->curNewPos_end=0;
         self->lastNewEnd=0;
         self->readedCoverCount=0;
     }else{
-        checki(self->_readFromPos_back==readFromPos,"TNewDataDiffStream::read() readFromPos error!");
+        checki(self->_readFromPos_back==readFromPos,
+               "TNewDataDiffStream::read() readFromPos error!");
     }
+
     self->_readFromPos_back=readFromPos+(size_t)(out_data_end-out_data);
-    
+
     size_t n=self->covers.coverCount();
+
     while (out_data<out_data_end) {
         hpatch_StreamPos_t curLen=self->curNewPos_end-self->curNewPos;
+
         if (curLen>0){
             size_t readLen=(out_data_end-out_data);
-            if (readLen>curLen) readLen=(size_t)curLen;
-            if (!self->newData->read(self->newData,self->curNewPos,
-                                     out_data,out_data+readLen)) return hpatch_FALSE;
+
+            if (readLen>curLen) {
+                readLen=(size_t)curLen;
+            }
+
+            if (!self->newData->read(self->newData,
+                                     self->curNewPos,
+                                     out_data,
+                                     out_data+readLen)) {
+                return hpatch_FALSE;
+            }
+
             out_data+=readLen;
             self->curNewPos+=readLen;
         }else{
             TCover curCover;
+
             if (self->readedCoverCount==n){
-                if (self->lastNewEnd>=self->newData->streamSize) return hpatch_FALSE; //error;
+                if (self->lastNewEnd>=self->newData->streamSize) {
+                    return hpatch_FALSE; //error;
+                }
+
                 curCover.newPos=self->newData->streamSize;
                 curCover.length=0;
                 curCover.oldPos=0;
@@ -201,12 +222,14 @@ hpatch_BOOL TNewDataDiffStream::_read(const hpatch_TStreamInput* stream,hpatch_S
                 self->covers.covers(self->readedCoverCount,&curCover);
                 ++self->readedCoverCount;
             }
+
             assert(self->lastNewEnd<=curCover.newPos);
             self->curNewPos=self->lastNewEnd;
             self->curNewPos_end=curCover.newPos;
             self->lastNewEnd=curCover.newPos+curCover.length;
         }
     }
+
     return hpatch_TRUE;
 };
 
@@ -234,7 +257,7 @@ TDiffStream::TDiffStream(const hpatch_TStreamOutput* _out_diff)
 
 TDiffStream::~TDiffStream(){
 }
-    
+
 void TDiffStream::pushBack(const unsigned char* src,size_t n){
     if (n==0) return;
     checki(out_diff->write(out_diff,writePos,src,src+n),
@@ -311,16 +334,16 @@ _decompressPlugin(decompressPlugin),_read_uncompress_pos(0),_decompressHandle(0)
     this->streamImport=this;
     this->streamSize=uncompressSize;
     this->read=_clip_read;
-    
+
     if (decompressPlugin)
         openDecompressHandle();
 }
-    
+
 TStreamClip::~TStreamClip(){
     closeDecompressHandle();
 }
-    
-    
+
+
 void TStreamClip::closeDecompressHandle(){
     hpatch_decompressHandle handle=_decompressHandle;
     _decompressHandle=0;
@@ -352,12 +375,12 @@ hpatch_BOOL TStreamClip::_clip_read(const hpatch_TStreamInput* stream,hpatch_Str
     size_t readLen=out_data_end-out_data;
     assert(readFromPos+readLen <= self->streamSize);
     self->_read_uncompress_pos+=readLen;
-    
+
     if (self->_decompressPlugin){
         return self->_decompressPlugin->decompress_part(self->_decompressHandle,out_data,out_data_end);
     }else{
         return self->_src->read(self->_src,self->_src_begin+readFromPos,out_data,out_data_end);
     }
 }
-    
+
 }//namespace hdiff_private

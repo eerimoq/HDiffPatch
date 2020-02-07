@@ -85,7 +85,8 @@ void create_compressed_diff_stream(const hpatch_TStreamInput*  newData,
                                    const hpatch_TStreamInput*  oldData,
                                    const hpatch_TStreamOutput* out_diff,
                                    const hdiff_TCompress* compressPlugin=0,
-                                   size_t kMatchBlockSize=kMatchBlockSize_default);
+                                   size_t kMatchBlockSize=kMatchBlockSize_default,
+                                   bool serialize_detools=false);
 
 
 //resave compressed_diff

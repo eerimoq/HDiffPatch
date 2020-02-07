@@ -808,17 +808,239 @@ static void stream_serialize(const hpatch_TStreamInput *newData,
     }
 }
 
+/* Colorful output selection. */
+#ifndef DBG_NCOLOR
+#    define DBG_LOC "\x1b[02m"
+#    define DBG_EXPR "\x1b[0m\x1b[36m\x1b[1m"
+#    define DBG_VALUE "\x1b[01m"
+#    define DBG_RESET "\x1b[0m"
+#    define DBG_FORMAT(format)                          \
+    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET      \
+    " = " DBG_VALUE format "\n" DBG_RESET
+#    define DBG_FORMAT_HEX(format, hexformat)                   \
+    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET              \
+    " = " DBG_VALUE format " (0x" hexformat ")\n" DBG_RESET
+#    define DBG_FORMAT_ARRAY_BEGIN                                      \
+    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s" DBG_RESET " = " DBG_VALUE "["
+#    define DBG_FORMAT_ARRAY_END   "] (length: %u)\n" DBG_RESET
+#    define DBG_FORMAT_HEXDUMP_BEGIN                    \
+    DBG_LOC "%s:%d: (%s) " DBG_EXPR "%s " DBG_RESET "(size: %u):\n" DBG_VALUE
+#    define DBG_FORMAT_HEXDUMP_END DBG_RESET
+#    define DBG_FORMAT_BACKTRACE                                        \
+    DBG_LOC "%s:%d: (%s) " DBG_RESET "Traceback (most recent call last):\n"
+#else
+#    define DBG_FORMAT(format)     "%s:%d: (%s) %s = " format "\n"
+#    define DBG_FORMAT_HEX(format, hexformat)           \
+    "%s:%d: (%s) %s = " format " (0x" hexformat ")\n"
+#    define DBG_FORMAT_ARRAY_BEGIN "%s:%d: (%s) %s = ["
+#    define DBG_FORMAT_ARRAY_END   "] (length: %u)\n"
+#    define DBG_FORMAT_HEXDUMP_BEGIN "%s:%d: (%s) %s (size: %u):\n"
+#    define DBG_FORMAT_BACKTRACE                        \
+    "%s:%d: (%s) Traceback (most recent call last):\n"
+#endif
+
+#define DBG_OSTREAM stderr
+
+static inline void dbg_print_ascii(const uint8_t *buf_p, size_t size)
+{
+    size_t i;
+
+    if (size < 8) {
+        fprintf(DBG_OSTREAM, " ");
+    }
+
+    for (i = 0; i < 16 - size; i++) {
+        fprintf(DBG_OSTREAM, "   ");
+    }
+
+    fprintf(DBG_OSTREAM, "'");
+
+    for (i = 0; i < size; i++) {
+        fprintf(DBG_OSTREAM, "%c", isprint((int)buf_p[i]) ? buf_p[i] : '.');
+    }
+
+    fprintf(DBG_OSTREAM, "'");
+}
+
+/**
+ * Hexdump of given size at given address. Returns the result of given
+ * expression.
+ */
+#define dbgh(expr, size)                                            \
+    dbg_hexdump(__FILE__, __LINE__, __func__, #expr, expr, size)
+
+static inline void dbg_hexdump(const char *file_p,
+                               int line,
+                               const char *func_p,
+                               const char *expr_p,
+                               const void *buf_p,
+                               size_t size)
+{
+    int pos;
+    const uint8_t *u8_buf_p;
+
+    u8_buf_p = (const uint8_t *)buf_p;
+    pos = 0;
+
+    fprintf(DBG_OSTREAM,
+            DBG_FORMAT_HEXDUMP_BEGIN,
+            file_p,
+            line,
+            func_p,
+            expr_p,
+            (int)size);
+
+    while (size > 0) {
+        if ((pos % 16) == 0) {
+            fprintf(DBG_OSTREAM, "    %08x: ", pos);
+        }
+
+        fprintf(DBG_OSTREAM, "%02x ", u8_buf_p[pos] & 0xff);
+
+        if ((pos % 16) == 7) {
+            fprintf(DBG_OSTREAM, " ");
+        }
+
+        if ((pos % 16) == 15) {
+            dbg_print_ascii(&u8_buf_p[pos - 15], 16);
+            fprintf(DBG_OSTREAM, "\n");
+        }
+
+        pos++;
+        size--;
+    }
+
+    if ((pos % 16) != 0) {
+        dbg_print_ascii(&u8_buf_p[pos - (pos % 16)], pos % 16);
+        fprintf(DBG_OSTREAM, "\n");
+    }
+
+#ifdef DBG_FORMAT_HEXDUMP_END
+    fprintf(DBG_OSTREAM, DBG_FORMAT_HEXDUMP_END);
+#endif
+}
+
+/**
+ * Serialize the patch in the detools format. Only the chunks are
+ * serialized here, the caller must create the header.
+ *
+ * Repeat this:
+ *
+ * 1. Diff data size + data.
+ * 2. Extra data size + data.
+ * 3. Adjustment.
+ */
+static void stream_serialize_detools(const hpatch_TStreamInput *newData,
+                                     const hpatch_TStreamInput *oldData,
+                                     const hpatch_TStreamOutput *out_diff,
+                                     const hdiff_TCompress *compressPlugin,
+                                     const TCovers& covers)
+{
+    uint8_t *buf_p = (uint8_t *)malloc(oldData->streamSize);
+    TCover cover;
+    TCover prev_cover;
+    size_t new_pos;
+    size_t size;
+
+    printf("%d\n", oldData->read(oldData, 0, buf_p, &buf_p[oldData->streamSize]));
+    dbgh(buf_p, oldData->streamSize);
+
+    buf_p = (uint8_t *)malloc(newData->streamSize);
+
+    printf("%d\n", newData->read(newData, 0, buf_p, &buf_p[newData->streamSize]));
+    dbgh(buf_p, newData->streamSize);
+
+    printf("coverCount: %lu\n", covers.coverCount());
+
+    // python3 -m detools create_patch_hdiffpatch --match-block-size 8 .gitmodules MANIFEST.in a
+    // coverCount: 4
+    // oldPos: 40, newPos: 137, length: 19
+    // oldPos:  0, newPos: 172, length: 34
+    // oldPos: 61, newPos: 206, length: 44
+    // oldPos: 32, newPos: 342, length: 28
+    //
+    //  0 diff, 137 extra,  40 adjustment - 137 written
+    // 19 diff,  16 extra, -40 adjustment - 172 written
+    // 34 diff,   0 extra,  61 adjustment - 206 written
+    // 44 diff,  92 extra, -29 adjustment - 342 written
+    // 28 diff,   0 extra,   0 adjustment - 370 written
+    //
+
+    new_pos = 0;
+    prev_cover.oldPos = 0;
+    prev_cover.newPos = 0;
+    prev_cover.length = 0;
+
+    for (size_t i = 0; i < covers.coverCount(); ++i) {
+        covers.covers(i, &cover);
+        // printf("oldPos: %llu, newPos: %llu, length: %llu\n",
+        //        cover.oldPos,
+        //        cover.newPos,
+        //        cover.length);
+        // printf("\nnew_pos: %lu\n", new_pos);
+
+        /* Diff data. */
+        printf("\ndiff: %llu\n", prev_cover.length);
+        // pack_size(out, prev_cover.length);
+        // write_zeros(out, prev_cover.length);
+        new_pos += prev_cover.length;
+
+        /* Extra data. */
+        size = (cover.newPos - new_pos);
+        printf("extra: %lu\n", size);
+        // pack_size(out, size);
+        // copy_data(out, &newData[new_pos], size);
+        new_pos += size;
+
+        /* Adjustment. */
+        printf("adjustment: %lld\n",
+               (long long)cover.oldPos - (long long)prev_cover.oldPos);
+        // pack_size(out, cover.oldPos - prev_cover.oldPos);
+        prev_cover = cover;
+    }
+
+    // printf("\nnew_pos: %lu\n", new_pos);
+
+    /* Diff data. */
+    printf("\ndiff: %llu\n", prev_cover.length);
+    // pack_size(out, prev_cover.length);
+    // write_zeros(out, prev_cover.length);
+    new_pos += prev_cover.length;
+
+    /* Extra data. */
+    printf("extra: %llu\n", newData->streamSize - new_pos);
+    // pack_size(out, size);
+    // copy_data(out, &newData[new_pos], size);
+
+    /* Adjustment. */
+    printf("adjustment: %d\n", 0);
+}
+
 void create_compressed_diff_stream(const hpatch_TStreamInput *newData,
                                    const hpatch_TStreamInput *oldData,
                                    const hpatch_TStreamOutput *out_diff,
                                    const hdiff_TCompress *compressPlugin,
-                                   size_t kMatchBlockSize)
+                                   size_t kMatchBlockSize,
+                                   bool serialize_detools)
 {
     const bool isSkipSameRange = (compressPlugin != NULL);
     TCovers covers(oldData->streamSize, newData->streamSize);
 
     getCovers_stream(newData, oldData, kMatchBlockSize, isSkipSameRange, covers);
-    stream_serialize(newData, oldData->streamSize, out_diff, compressPlugin, covers);
+
+    if (!serialize_detools) {
+        stream_serialize_detools(newData,
+                                 oldData,
+                                 out_diff,
+                                 compressPlugin,
+                                 covers);
+    } else {
+        stream_serialize(newData,
+                         oldData->streamSize,
+                         out_diff,
+                         compressPlugin,
+                         covers);
+    }
 }
 
 
