@@ -790,34 +790,24 @@ static void stream_serialize_normal(const hpatch_TStreamInput *new_data_p,
     size_t new_pos;
     size_t size;
     TDiffStream outDiff(out_diff_p);
-    unsigned char value[1];
 
     new_pos = 0;
     prev_cover.oldPos = 0;
     prev_cover.newPos = 0;
     prev_cover.length = 0;
 
-    for (size_t i = 0; i < covers.coverCount(); ++i) {
+    for (size_t i = 0; i < covers.coverCount(); i++) {
         covers.covers(i, &cover);
 
         /* Diff data. */
         pack_size_stream(outDiff, prev_cover.length);
-
-        for (size_t j = 0; j < prev_cover.length; j++) {
-            outDiff.pushBack((const unsigned char *)"\x00", 1);
-        }
-
+        outDiff.pushBackRepeatedByte(0, prev_cover.length);
         new_pos += prev_cover.length;
 
         /* Extra data. */
         size = (cover.newPos - new_pos);
         pack_size_stream(outDiff, size);
-
-        for (size_t j = 0; j < size; j++) {
-            new_data_p->read(new_data_p, new_pos + j, &value[0], &value[1]);
-            outDiff.pushBack(&value[0], 1);
-        }
-
+        outDiff.pushStreamSlice(new_data_p, new_pos, new_pos + size);
         new_pos += size;
 
         /* Adjustment. */
@@ -830,20 +820,14 @@ static void stream_serialize_normal(const hpatch_TStreamInput *new_data_p,
 
     /* Diff data. */
     pack_size_stream(outDiff, prev_cover.length);
-
-    for (size_t j = 0; j < prev_cover.length; j++) {
-        outDiff.pushBack((const unsigned char *)"\x00", 1);
-    }
-
+    outDiff.pushBackRepeatedByte(0, prev_cover.length);
     new_pos += prev_cover.length;
 
     /* Extra data. */
     pack_size_stream(outDiff, new_data_p->streamSize - new_pos);
-
-    for (size_t j = 0; j < new_data_p->streamSize - new_pos; j++) {
-        new_data_p->read(new_data_p, new_pos + j, &value[0], &value[1]);
-        outDiff.pushBack(&value[0], 1);
-    }
+    outDiff.pushStreamSlice(new_data_p,
+                            new_pos,
+                            new_pos + new_data_p->streamSize - new_pos);
 
     /* Adjustment. */
     pack_size_stream(outDiff, 0);

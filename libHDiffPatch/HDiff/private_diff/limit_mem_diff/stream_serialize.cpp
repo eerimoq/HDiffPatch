@@ -322,6 +322,43 @@ void TDiffStream::pushStream(const hpatch_TStreamInput* stream,
     }
 }
 
+void TDiffStream::pushBackRepeatedByte(unsigned char value, size_t length)
+{
+    size_t chunk_size;
+    static unsigned char zeros[4096] = { 0 };
+
+    chunk_size = 4096;
+
+    while (length > 0) {
+        if (length < chunk_size) {
+            chunk_size = length;
+        }
+
+        pushBack(&zeros[0], chunk_size);
+        length -= chunk_size;
+    }
+}
+
+void TDiffStream::pushStreamSlice(const hpatch_TStreamInput *stream,
+                                  size_t begin,
+                                  size_t end)
+{
+    size_t chunk_size;
+    unsigned char buf[4096];
+
+    chunk_size = 4096;
+
+    while (begin < end) {
+        if ((end - begin) < chunk_size) {
+            chunk_size = (end - begin);
+        }
+
+        stream->read(stream, begin, &buf[0], &buf[chunk_size]);
+        pushBack(&buf[0], chunk_size);
+        begin += chunk_size;
+    }
+}
+
 TStreamClip::TStreamClip(const hpatch_TStreamInput* stream,
                          hpatch_StreamPos_t clipBeginPos,hpatch_StreamPos_t clipEndPos,
                          hpatch_TDecompress* decompressPlugin,hpatch_StreamPos_t uncompressSize)
