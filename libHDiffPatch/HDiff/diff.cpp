@@ -792,10 +792,6 @@ static void stream_serialize_normal(const hpatch_TStreamInput *new_data_p,
     TDiffStream outDiff(out_diff_p);
     unsigned char value[1];
 
-    if (covers.coverCount() == 0) {
-        return;
-    }
-
     new_pos = 0;
     prev_cover.oldPos = 0;
     prev_cover.newPos = 0;
