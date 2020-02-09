@@ -498,12 +498,20 @@ static void serialize_diff(const TDiffData& diff, std::vector<TByte>& out_diff)
      pushBack(out_data, &_cstrEndTag, (&_cstrEndTag) + 1);
  }
 
-/**
- *
- */
-static void serialize_compressed_diff(const TDiffData& diff,
-                                      std::vector<TByte>& out_diff,
-                                      const hdiff_TCompress *compressPlugin)
+static void serialize_compressed_diff_normal(
+    const TDiffData& diff,
+    std::vector<TByte>& out_diff,
+    const hdiff_TCompress *compressPlugin)
+{
+    (void)diff;
+    (void)out_diff;
+    (void)compressPlugin;
+}
+
+static void serialize_compressed_diff_hdiffpatch(
+    const TDiffData& diff,
+    std::vector<TByte>& out_diff,
+    const hdiff_TCompress *compressPlugin)
 {
     const TUInt coverCount = (TUInt)diff.covers.size();
     std::vector<TByte> cover_buf;
@@ -576,6 +584,26 @@ static void serialize_compressed_diff(const TDiffData& diff,
     pushCompressCode(out_diff, compress_newDataDiff, diff.newDataDiff);
 }
 
+static void serialize_compressed_diff(const TDiffData& diff,
+                                      std::vector<TByte>& out_diff,
+                                      const hdiff_TCompress *compressPlugin,
+                                      int patch_type)
+{
+    switch (patch_type) {
+
+    case 0:
+        serialize_compressed_diff_normal(diff, out_diff, compressPlugin);
+        break;
+
+    case 2:
+        serialize_compressed_diff_hdiffpatch(diff, out_diff, compressPlugin);
+        break;
+
+    default:
+        break;
+    }
+}
+
 static void get_diff(const TByte* newData,const TByte* newData_end,
                      const TByte* oldData,const TByte* oldData_end,
                      TDiffData&   out_diff,int kMinSingleMatchScore,
@@ -640,7 +668,7 @@ void create_compressed_diff(const TByte* newData,
     TDiffData diff;
 
     get_diff(newData,newData_end, oldData, oldData_end, diff, kMinSingleMatchScore);
-    serialize_compressed_diff(diff, out_diff, compressPlugin);
+    serialize_compressed_diff(diff, out_diff, compressPlugin, patch_type);
 }
 
 bool check_compressed_diff(const TByte* newData,const TByte* newData_end,
