@@ -375,7 +375,6 @@ static void sub_cover(TDiffData& diff){
         pushBack(diff.newDataDiff,newData+lastNewEnd,diff.newData_end);
 }
 
-//diff结果序列化输出.
 static void serialize_diff(const TDiffData& diff, std::vector<TByte>& out_diff)
 {
     const TUInt coverCount = (TUInt)diff.covers.size();
@@ -498,7 +497,7 @@ static void serialize_diff(const TDiffData& diff, std::vector<TByte>& out_diff)
      pushBack(out_data, &_cstrEndTag, (&_cstrEndTag) + 1);
  }
 
-static void serialize_compressed_diff_normal(
+static void serialize_compressed_diff_sequential(
     const TDiffData& diff,
     std::vector<TByte>& out_diff,
     const hdiff_TCompress *compressPlugin)
@@ -592,7 +591,7 @@ static void serialize_compressed_diff(const TDiffData& diff,
     switch (patch_type) {
 
     case 0:
-        serialize_compressed_diff_normal(diff, out_diff, compressPlugin);
+        serialize_compressed_diff_sequential(diff, out_diff, compressPlugin);
         break;
 
     case 2:
@@ -806,12 +805,12 @@ static void pack_size_stream(TDiffStream& outDiff, TInt value)
 }
 
 /**
- * Serialize the diff as a normal patch. Only the chunks are
+ * Serialize the diff as a sequential patch. Only the chunks are
  * serialized here, the caller must create the header.
  */
-static void stream_serialize_normal(const hpatch_TStreamInput *new_data_p,
-                                    const hpatch_TStreamOutput *out_diff_p,
-                                    const TCovers& covers)
+static void stream_serialize_sequential(const hpatch_TStreamInput *new_data_p,
+                                        const hpatch_TStreamOutput *out_diff_p,
+                                        const TCovers& covers)
 {
     TCover cover;
     TCover prev_cover;
@@ -937,7 +936,7 @@ static void stream_serialize(const hpatch_TStreamInput *new_data_p,
     switch (patch_type) {
 
     case 0:
-        stream_serialize_normal(new_data_p, out_diff_p, covers);
+        stream_serialize_sequential(new_data_p, out_diff_p, covers);
         break;
 
     case 2:

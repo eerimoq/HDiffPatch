@@ -1,30 +1,28 @@
-//bytes_rle.cpp
-//
 /*
- The MIT License (MIT)
- Copyright (c) 2012-2017 HouSisong
-
- Permission is hereby granted, free of charge, to any person
- obtaining a copy of this software and associated documentation
- files (the "Software"), to deal in the Software without
- restriction, including without limitation the rights to use,
- copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following
- conditions:
-
- The above copyright notice and this permission notice shall be
- included in all copies of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- OTHER DEALINGS IN THE SOFTWARE.
-*/
+ * The MIT License (MIT)
+ * Copyright (c) 2012-2017 HouSisong
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
 
 #include "bytes_rle.h"
 #include <assert.h>
@@ -55,10 +53,9 @@ namespace hdiff_private {
                 type = kByteRleType_rle;
             }
 
-            const TUInt packCount = (TUInt)(count - 1);
-            packUIntWithTag(out_ctrl, packCount, type, kByteRleType_bit);
+            packUIntWithTag(out_ctrl, count - 1, type, kByteRleType_bit);
 
-            if (type==kByteRleType_rle) {
+            if (type == kByteRleType_rle) {
                 out_code.push_back(cur);
             }
         }
@@ -79,11 +76,11 @@ namespace hdiff_private {
                             (TUInt)(count - 1),
                             kByteRleType_unrle,
                             kByteRleType_bit);
-            out_code.insert(out_code.end(), byteStream, byteStream+count);
+            out_code.insert(out_code.end(), byteStream, byteStream + count);
         }
 
-        inline static const TByte* rle_getEqualEnd(const TByte* cur,
-                                                   const TByte* src_end,
+        inline static const TByte *rle_getEqualEnd(const TByte *cur,
+                                                   const TByte *src_end,
                                                    TByte value)
         {
             while (cur != src_end) {
@@ -101,26 +98,25 @@ namespace hdiff_private {
 
     void bytesRLE_save(std::vector<TByte>& out_ctrlBuf,
                        std::vector<TByte>& out_codeBuf,
-                       const TByte* src,
-                       const TByte* src_end,
+                       const TByte *src,
+                       const TByte *src_end,
                        int rle_parameter)
     {
-        assert(rle_parameter>=kRle_bestSize);
-        assert(rle_parameter<=kRle_bestUnRleSpeed);
+        assert(rle_parameter >= kRle_bestSize);
+        assert(rle_parameter <= kRle_bestUnRleSpeed);
 
-        const TUInt kRleMinSameSize = rle_parameter + 1; //增大则压缩率变小,解压稍快.
-        const TByte* notSame = src;
+        const TUInt kRleMinSameSize = rle_parameter + 1;
+        const TByte *notSame = src;
 
         while (src != src_end) {
             //find equal length
             TByte value = *src;
-
             const TByte *eqEnd = rle_getEqualEnd(src + 1, src_end, value);
             const TUInt sameCount = (TUInt)(eqEnd - src);
 
             if ((sameCount > kRleMinSameSize)
                 || ((sameCount == kRleMinSameSize)
-                    && ((value == 0) || (value == 255)))) { //可以压缩.
+                    && ((value == 0) || (value == 255)))) {
                 if (notSame != src) {
                     rle_pushNotSame(out_ctrlBuf,
                                     out_codeBuf,
@@ -129,7 +125,6 @@ namespace hdiff_private {
                 }
 
                 rle_pushSame(out_ctrlBuf, out_codeBuf, value, sameCount);
-
                 src += sameCount;
                 notSame = src;
             } else {

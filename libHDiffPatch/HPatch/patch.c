@@ -504,7 +504,7 @@ static hpatch_BOOL _bytesRle_load(TByte *out_data,
 
         ++length;
 
-        switch (type){
+        switch (type) {
 
         case kByteRleType_rle0:
             memset(out_data, 0, length);
@@ -1585,15 +1585,15 @@ static hpatch_BOOL _patch_decompress_step(const hpatch_TStreamOutput *out_newDat
     _TDecompressInputSteram decompressers[4];
     int i;
     TUInt coverCount;
-    hpatch_BOOL result=hpatch_TRUE;
-    TUInt diffPos0=0;
-    const TUInt diffPos_end=compressedDiff->streamSize;
-    const size_t cacheSize=(temp_cache_end-temp_cache)/_kCacheDeCount;
+    hpatch_BOOL result = hpatch_TRUE;
+    TUInt diffPos0 = 0;
+    const TUInt diffPos_end = compressedDiff->streamSize;
+    const size_t cacheSize = (temp_cache_end - temp_cache) / _kCacheDeCount;
     hpatch_TStreamInput virtual_ctrl;
-    TByte virtual_buf[2+hpatch_kMaxPackedUIntBytes];
-    TByte* virtual_buf_end=virtual_buf+2+hpatch_kMaxPackedUIntBytes;
+    TByte virtual_buf[2 + hpatch_kMaxPackedUIntBytes];
+    TByte* virtual_buf_end = virtual_buf + 2 + hpatch_kMaxPackedUIntBytes;
 
-    if (cacheSize<hpatch_kMaxPluginTypeLength) {
+    if (cacheSize < hpatch_kMaxPluginTypeLength) {
         return _hpatch_FALSE;
     }
 
@@ -1737,7 +1737,7 @@ static hpatch_BOOL _patch_decompress_step(const hpatch_TStreamOutput *out_newDat
     }
 
     if (!is_copy_step) {
-        TByte* cur_buf=virtual_buf;
+        TByte* cur_buf = virtual_buf;
 
         if (!hpatch_packUInt(&cur_buf, virtual_buf_end, 0)) {
             _clear_return(_hpatch_FALSE); //inc_oldPos
